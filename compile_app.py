@@ -538,12 +538,12 @@ html_template = """<!DOCTYPE html>
     // 2. PEMBERSIHAN OTOMATIS CACHE LAMA & INISIALISASI DATA 81 DOSEN
     // =========================================================================
     // Hapus versi localStorage lama yang membuat "sisa 7 slot / sisa 2 slot" palsu!
-    ['pantau_dosen_state', 'pantau_dosen_state_v2', 'pantau_dosen_state_v3'].forEach(k => {
+    ['pantau_dosen_state', 'pantau_dosen_state_v2', 'pantau_dosen_state_v3', 'pantau_dosen_state_v4'].forEach(k => {
       try { localStorage.removeItem(k); } catch (e) {}
     });
 
-    const STORAGE_KEY = 'pantau_dosen_state_v4';
-    const LOG_STORAGE_KEY = 'pantau_dosen_logs_v4';
+    const STORAGE_KEY = 'pantau_dosen_state_v5';
+    const LOG_STORAGE_KEY = 'pantau_dosen_logs_v5';
     const INITIAL_SEED = """ + seed_json_str + """;
 
     let dosenList = [];
@@ -553,10 +553,13 @@ html_template = """<!DOCTYPE html>
     let supabaseClient = null;
 
     function normalizeDosenItem(d) {
-      const q = Number(d.quota || 0);
-      let status = d.crowdsourced_status || (q === 0 ? 'zero' : 'unknown');
-      let rem = d.remaining_slots;
-      let filled = d.filled_slots;
+      const q = Number(d.quota !== undefined ? d.quota : (d.quota_resmi !== undefined ? d.quota_resmi : 0));
+      let rawStatus = d.crowdsourced_status || d.status_riil || (q === 0 ? 'zero' : 'unknown');
+      if (rawStatus === 'almost_full') rawStatus = 'nearly_full';
+      let status = rawStatus;
+
+      let rem = d.remaining_slots !== undefined ? d.remaining_slots : d.sisa_slot_riil;
+      let filled = d.filled_slots !== undefined ? d.filled_slots : d.terisi_slot_riil;
 
       if (q === 0 || status === 'zero') {
         status = 'zero';
@@ -570,20 +573,42 @@ html_template = """<!DOCTYPE html>
           rem = status === 'nearly_full' ? 1 : Math.max(3, q - 2);
         }
         rem = Math.max(0, Math.min(q, Number(rem)));
-        filled = Math.max(0, q - rem);
+        filled = filled !== null && filled !== undefined ? Number(filled) : Math.max(0, q - rem);
       } else {
         status = 'unknown';
         rem = null;
         filled = null;
       }
 
+      const topicsArr = Array.isArray(d.topics) ? d.topics : (Array.isArray(d.topik_mahasiswa) ? d.topik_mahasiswa : []);
+      const noteStr = d.last_report_note || d.catatan_terakhir || (
+        status === 'full' ? `Dikonfirmasi SUDAH PENUH: Terisi ${q} dari ${q} kuota (0 kursi tersisa).` :
+        status === 'zero' ? 'Kuota resmi 0 di SIM-TA (Tidak membuka bimbingan semester ini).' :
+        'Belum ada laporan mahasiswa. Klik Update jika Anda tahu kuota dosen ini.'
+      );
+      const sourceStr = d.last_report_source || d.sumber_terakhir || (status === 'full' ? 'Konfirmasi Mahasiswa' : 'Data Dasar SIM-TA');
+      const confCount = Number(d.confirmations_count !== undefined ? d.confirmations_count : (d.konfirmasi_count || 0));
+      const updatedStr = d.updated_at || d.last_updated || '2026-11-06';
+
       return {
         ...d,
         quota: q,
+        quota_resmi: q,
         crowdsourced_status: status,
+        status_riil: status,
         remaining_slots: rem,
+        sisa_slot_riil: rem,
         filled_slots: filled,
-        topics: Array.isArray(d.topics) ? d.topics : []
+        terisi_slot_riil: filled,
+        last_report_note: noteStr,
+        catatan_terakhir: noteStr,
+        last_report_source: sourceStr,
+        confirmations_count: confCount,
+        konfirmasi_count: confCount,
+        updated_at: updatedStr,
+        last_updated: updatedStr,
+        topics: topicsArr,
+        topik_mahasiswa: topicsArr
       };
     }
 
